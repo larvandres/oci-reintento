@@ -2,7 +2,7 @@ name: Crear VM en Oracle
 
 on:
   schedule:
-    - cron: "*/10 * * * *"
+    - cron: "*/20 * * * *"
   workflow_dispatch:
 
 permissions:
@@ -16,7 +16,7 @@ concurrency:
 jobs:
   intentar:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -42,12 +42,12 @@ jobs:
           EOF
           chmod 600 ~/.oci/config
 
-      # 8 intentos por corrida, uno por minuto; la corrida siguiente arranca a los 10 minutos.
+      # 4 intentos por corrida (cada pedido a Oracle tarda ~1,5 min); la corrida siguiente arranca a los 20 minutos.
       # "Sin lugar" no marca la corrida como fallida (GitHub mandaría un mail cada vez): solo avisa cuando se crea.
       - name: Intentar crear la VM
         id: crear
         run: |
-          ./crear-vm.sh 8 60 | tee salida.txt || true
+          ./crear-vm.sh 4 30 | tee salida.txt || true
           if grep -q -e CREADA -e 'Ya existe' salida.txt; then echo "ok=1" >> "$GITHUB_OUTPUT"; fi
 
       - name: Avisar y apagar el reintento
