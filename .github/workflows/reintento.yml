@@ -16,7 +16,7 @@ concurrency:
 jobs:
   intentar:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 95
     steps:
       - uses: actions/checkout@v4
 
@@ -42,12 +42,13 @@ jobs:
           EOF
           chmod 600 ~/.oci/config
 
-      # 3 intentos por corrida (cada pedido a Oracle tarda 1,5–4 min); la corrida siguiente arranca a los 20 minutos.
+      # Corridas largas (hasta 85 min, cada pedido a Oracle tarda 1,5–4 min): GitHub atrasa o saltea muchos
+      # disparos del cron, así que no conviene depender de corridas cortas. La concurrencia evita que se pisen.
       # "Sin lugar" no marca la corrida como fallida (GitHub mandaría un mail cada vez): solo avisa cuando se crea.
       - name: Intentar crear la VM
         id: crear
         run: |
-          ./crear-vm.sh 3 30 | tee salida.txt || true
+          timeout 85m ./crear-vm.sh 100 30 | tee salida.txt || true
           if grep -q -e CREADA -e 'Ya existe' salida.txt; then echo "ok=1" >> "$GITHUB_OUTPUT"; fi
 
       - name: Avisar y apagar el reintento

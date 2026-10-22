@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Intenta crear la VM ARM gratis (A1.Flex 2 OCPU / 12 GB, Ubuntu 24.04) en Oracle Cloud São Paulo.
+# Intenta crear la VM ARM gratis (A1.Flex, Ubuntu 24.04) en Oracle Cloud São Paulo.
+# Alterna entre 2 OCPU / 12 GB y 1 OCPU / 6 GB (la chica a veces entra cuando la grande no; después se agranda).
 # Uso: crear-vm.sh [intentos] [segundos entre intentos]. Sale con 0 si la creó (o si ya existe).
 export SUPPRESS_LABEL_WARNING=True
 OCI="${OCI:-oci}"
@@ -16,14 +17,16 @@ ya=$(oci_r compute instance list -c $T --display-name addon-stremio --query 'dat
 if [[ "$ya" == ocid1.* ]]; then echo "Ya existe: $ya"; exit 0; fi
 
 SUBNET=$(oci_r network subnet list -c $T --query 'data[0].id' --raw-output)
+TAMANOS=('{"ocpus":2,"memoryInGBs":12}' '{"ocpus":1,"memoryInGBs":6}')
 for n in $(seq 1 "$INTENTOS"); do
+    tam=${TAMANOS[$(( (n - 1) % 2 ))]}
     out=$(oci_r compute instance launch -c $T --availability-domain "$AD" --display-name addon-stremio \
-        --shape VM.Standard.A1.Flex --shape-config '{"ocpus":2,"memoryInGBs":12}' \
+        --shape VM.Standard.A1.Flex --shape-config "$tam" \
         --image-id $IMG --subnet-id "$SUBNET" --assign-public-ip true --boot-volume-size-in-gbs 50 \
         --metadata "{\"ssh_authorized_keys\":\"$SSH_KEY\"}" \
         --query 'data.{id:id,estado:"lifecycle-state"}')
-    if grep -q '"id"' <<<"$out"; then echo "$(date '+%F %T') CREADA: $out"; exit 0; fi
-    echo "$(date '+%F %T') intento $n: $(grep -m1 -o '"message": "[^"]*"' <<<"$out" || echo "$out" | tail -3)"
+    if grep -q '"id"' <<<"$out"; then echo "$(date '+%F %T') CREADA ($tam): $out"; exit 0; fi
+    echo "$(date '+%F %T') intento $n ($tam): $(grep -m1 -o '"message": "[^"]*"' <<<"$out" || echo "$out" | tail -3)"
     [ "$n" -lt "$INTENTOS" ] && sleep "$ESPERA"
 done
 exit 1
