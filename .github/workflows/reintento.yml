@@ -1,0 +1,59 @@
+name: Crear VM en Oracle
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  issues: write
+
+concurrency:
+  group: crear-vm
+  cancel-in-progress: false
+
+jobs:
+  intentar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar la CLI de Oracle
+        run: pip install --quiet oci-cli
+
+      - name: Configurar credenciales
+        env:
+          OCI_USER: ${{ secrets.OCI_USER }}
+          OCI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
+          OCI_KEY: ${{ secrets.OCI_KEY }}
+        run: |
+          mkdir -p ~/.oci
+          printf '%s\n' "$OCI_KEY" > ~/.oci/key.pem
+          chmod 600 ~/.oci/key.pem
+          cat > ~/.oci/config <<EOF
+          [DEFAULT]
+          user=$OCI_USER
+          fingerprint=$OCI_FINGERPRINT
+          tenancy=ocid1.tenancy.oc1..aaaaaaaahh4mc6kabj2nr5wm56lsa4b4ie2jh4qsmdiocawqiwvcqziqgwsq
+          region=sa-saopaulo-1
+          key_file=~/.oci/key.pem
+          EOF
+          chmod 600 ~/.oci/config
+
+      # 8 intentos por corrida, uno por minuto; la corrida siguiente arranca a los 10 minutos.
+      # "Sin lugar" no marca la corrida como fallida (GitHub mandaría un mail cada vez): solo avisa cuando se crea.
+      - name: Intentar crear la VM
+        id: crear
+        run: |
+          ./crear-vm.sh 8 60 | tee salida.txt || true
+          if grep -q -e CREADA -e 'Ya existe' salida.txt; then echo "ok=1" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Avisar y apagar el reintento
+        if: steps.crear.outputs.ok == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue create --title "VM de Oracle creada" --body "$(cat salida.txt)"
+          gh workflow disable reintento.yml
