@@ -44,11 +44,12 @@ jobs:
 
       # Corridas largas (hasta 85 min, cada pedido a Oracle tarda 1,5–4 min): GitHub atrasa o saltea muchos
       # disparos del cron, así que no conviene depender de corridas cortas. La concurrencia evita que se pisen.
+      # Mira el reporte de capacidad cada minuto y pide la VM apenas hay lugar (más un pedido real cada 10 min).
       # "Sin lugar" no marca la corrida como fallida (GitHub mandaría un mail cada vez): solo avisa cuando se crea.
       - name: Intentar crear la VM
         id: crear
         run: |
-          timeout 85m ./crear-vm.sh 100 30 | tee salida.txt || true
+          timeout 88m ./crear-vm.sh 85 | tee salida.txt || true
           if grep -q -e CREADA -e 'Ya existe' salida.txt; then echo "ok=1" >> "$GITHUB_OUTPUT"; fi
 
       - name: Avisar y apagar el reintento
