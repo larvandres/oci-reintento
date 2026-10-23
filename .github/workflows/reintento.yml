@@ -59,3 +59,11 @@ jobs:
         run: |
           gh issue create --title "VM de Oracle creada" --body "$(cat salida.txt)"
           gh workflow disable reintento.yml
+
+      # GitHub saltea muchos disparos del cron: al terminar sin lugar, la corrida lanza la siguiente
+      # (queda en espera por la concurrencia). Cancelar una corrida a mano corta la cadena; el cron la retoma.
+      - name: Lanzar la próxima corrida
+        if: steps.crear.outputs.ok != '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run reintento.yml --ref main
