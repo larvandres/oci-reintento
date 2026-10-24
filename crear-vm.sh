@@ -22,13 +22,14 @@ if [[ "$ya" == ocid1.* ]]; then echo "Ya existe: $ya"; exit 0; fi
 SUBNET=$(oci_r network subnet list -c $T --query 'data[0].id' --raw-output)
 TAMANOS=('{"ocpus":2,"memoryInGBs":12}' '{"ocpus":1,"memoryInGBs":6}')
 
-# Imprime el primer tamaño con lugar según el reporte, "no" si no hay ninguno, "error: …" si no se pudo consultar
+# Imprime el primer tamaño con lugar según el reporte, "no" si no hay ninguno (cualquier otro estado:
+# OUT_OF_HOST_CAPACITY, HARDWARE_NOT_SUPPORTED…), "error: …" si no se pudo consultar
 reporte() {
     local out
     out=$(oci_r compute compute-capacity-report create -c $T --availability-domain "$AD" \
         --shape-availabilities "[{\"instanceShape\":\"VM.Standard.A1.Flex\",\"instanceShapeConfig\":${TAMANOS[0]}},{\"instanceShape\":\"VM.Standard.A1.Flex\",\"instanceShapeConfig\":${TAMANOS[1]}}]" \
         --query 'data."shape-availabilities"[]."availability-status"' --raw-output)
-    if ! grep -qE 'CAPACITY|AVAILABLE' <<<"$out"; then echo "error: $(grep -m1 -o '"message": "[^"]*"' <<<"$out" || echo "$out" | tail -1)"; return; fi
+    if [[ "$out" != \[* ]]; then echo "error: $(grep -m1 -o '"message": "[^"]*"' <<<"$out" || echo "$out" | tail -1)"; return; fi
     local i=0
     for e in $(tr -d '[],"' <<<"$out"); do
         [ "$e" = AVAILABLE ] && { echo "${TAMANOS[$i]}"; return; }
@@ -48,14 +49,17 @@ lanzar() {
     echo "$(date '+%F %T') pedido ($1): $(grep -m1 -o '"message": "[^"]*"' <<<"$out" || echo "$out" | tail -3)"
 }
 
-n=0; ultimo=0; con_reporte=1
+n=0; ultimo=0; con_reporte=1; errores=0
 while [ "$(date +%s)" -lt "$FIN" ]; do
     if [ "$con_reporte" = 1 ]; then
         r=$(reporte)
         case "$r" in
-            error:*) echo "$(date '+%F %T') sin reporte de capacidad ($r): sigo solo con pedidos"; con_reporte=0 ;;
-            no) echo "$(date '+%F %T') reporte: sin lugar" ;;
-            *) echo "$(date '+%F %T') el reporte dice que hay lugar: $r"; lanzar "$r"; ultimo=$(date +%s) ;;
+            # Un error suelto (500, 429…) no apaga el reporte: solo 4 seguidos (p. ej. falta de permiso)
+            error:*) errores=$((errores + 1))
+                if [ "$errores" -ge 4 ]; then echo "$(date '+%F %T') sin reporte de capacidad ($r): sigo solo con pedidos"; con_reporte=0
+                else echo "$(date '+%F %T') falló el reporte ($r), reintento en un minuto"; fi ;;
+            no) errores=0; echo "$(date '+%F %T') reporte: sin lugar" ;;
+            *) errores=0; echo "$(date '+%F %T') el reporte dice que hay lugar: $r"; lanzar "$r"; ultimo=$(date +%s) ;;
         esac
     fi
     if [ $(( $(date +%s) - ultimo )) -ge "$CADA_LAUNCH" ]; then

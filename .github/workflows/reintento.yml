@@ -57,7 +57,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh issue create --title "VM de Oracle creada" --body "$(cat salida.txt)"
+          # Si la creó otra corrida (esta solo vio "Ya existe"), ese aviso ya está: no duplicar el issue
+          if grep -q CREADA salida.txt; then gh issue create --title "VM de Oracle creada" --body "$(cat salida.txt)"; fi
           gh workflow disable reintento.yml
 
       # GitHub saltea muchos disparos del cron: al terminar sin lugar, la corrida lanza la siguiente
