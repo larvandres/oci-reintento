@@ -10,8 +10,9 @@ SL=ocid1.securitylist.oc1.sa-saopaulo-1.aaaaaaaavqbrcffsupdofabsrm7fqyqnmcy6awdp
 OCI="${OCI:-$HOME/.local/bin/oci}"
 export SUPPRESS_LABEL_WARNING=True
 
-read -rp "Subdominio DuckDNS (solo el nombre, sin .duckdns.org): " DUCKDNS_DOMAIN
-read -rsp "Token DuckDNS: " DUCKDNS_TOKEN; echo
+# Toma los valores de variables de entorno; si faltan, los pide.
+[ -n "${DUCKDNS_DOMAIN:-}" ] || read -rp "Subdominio DuckDNS (solo el nombre, sin .duckdns.org): " DUCKDNS_DOMAIN
+[ -n "${DUCKDNS_TOKEN:-}" ]  || { read -rsp "Token DuckDNS: " DUCKDNS_TOKEN; echo; }
 
 # 1. Deploy key de solo lectura: la VM clona el repo privado sin tu cuenta
 echo "== Deploy key =="
