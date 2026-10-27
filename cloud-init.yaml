@@ -59,6 +59,7 @@ runcmd:
   # 5. Construir y correr el addon (usa el Dockerfile del repo). Todas las fuentes + proxy.
   #    RAILWAY_PUBLIC_DOMAIN hace que el proxy HLS se sirva por el mismo puerto/dominio y con https.
   - cd /opt/addon/sniff && docker build -t addon .
-  - docker run -d --restart always --name addon -p 127.0.0.1:7000:7000 -e HOST=0.0.0.0 -e PORT=7000 -e ALLOW_PROXY=true -e RAILWAY_PUBLIC_DOMAIN=@DUCKDNS_DOMAIN@.duckdns.org addon
+  #    EXCLUDE_PROVIDERS saca las 4 que solo dan archivos sin Range (no se pueden adelantar).
+  - docker run -d --restart always --name addon -p 127.0.0.1:7000:7000 -e HOST=0.0.0.0 -e PORT=7000 -e ALLOW_PROXY=true -e EXCLUDE_PROVIDERS=4khdhub,moviesmod,moviesdrive,uhdmovies -e RAILWAY_PUBLIC_DOMAIN=@DUCKDNS_DOMAIN@.duckdns.org addon
   # 6. Caddy: TLS automático y reverse proxy al addon
   - docker run -d --restart always --name caddy --network host -v /opt/addon/caddy-data:/data -v /opt/addon/Caddyfile:/etc/caddy/Caddyfile:ro caddy:2.8.4
