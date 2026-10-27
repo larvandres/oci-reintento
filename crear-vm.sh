@@ -25,6 +25,25 @@ SUBNET=$(oci_r network subnet list -c $T --query 'data[0].id' --raw-output)
 TAMANOS=('{"ocpus":2,"memoryInGBs":12}' '{"ocpus":1,"memoryInGBs":6}')
 FDS=(FAULT-DOMAIN-1 FAULT-DOMAIN-2 FAULT-DOMAIN-3)
 
+# Render del cloud-init: mete el deploy key (en base64) y los datos de DuckDNS en la plantilla.
+# Sin SNIFF_DEPLOY_KEY/DUCKDNS_* la VM se crea igual pero sin arrancar el addon (útil para probar).
+AQUI="$(cd "$(dirname "$0")" && pwd)"
+USER_DATA=""
+if [ -n "$SNIFF_DEPLOY_KEY" ] && [ -n "$DUCKDNS_DOMAIN" ] && [ -n "$DUCKDNS_TOKEN" ]; then
+    DEPLOY_B64=$(printf '%s' "$SNIFF_DEPLOY_KEY" | base64 -w0)
+    USER_DATA="$AQUI/cloud-init.rendered.yaml"
+    DEPLOY_B64="$DEPLOY_B64" DUCKDNS_DOMAIN="$DUCKDNS_DOMAIN" DUCKDNS_TOKEN="$DUCKDNS_TOKEN" \
+    python3 - "$AQUI/cloud-init.yaml" "$USER_DATA" <<'PY'
+import os,sys
+t=open(sys.argv[1]).read()
+for k in ("DEPLOY_B64","DUCKDNS_DOMAIN","DUCKDNS_TOKEN"): t=t.replace("@%s@"%k, os.environ[k])
+open(sys.argv[2],"w").write(t)
+PY
+    echo "cloud-init listo (DuckDNS: ${DUCKDNS_DOMAIN}.duckdns.org)"
+else
+    echo "AVISO: faltan SNIFF_DEPLOY_KEY/DUCKDNS_DOMAIN/DUCKDNS_TOKEN; la VM se crea sin cloud-init"
+fi
+
 # Imprime el primer tamaño con lugar según el reporte, "no" si no hay ninguno (cualquier otro estado:
 # OUT_OF_HOST_CAPACITY, HARDWARE_NOT_SUPPORTED…), "error: …" si no se pudo consultar
 reporte() {
@@ -43,11 +62,12 @@ reporte() {
 
 # $1 = tamaño (shape-config), $2 = fault domain
 lanzar() {
-    local out
+    local out ud=()
+    [ -n "$USER_DATA" ] && ud=(--user-data-file "$USER_DATA")
     out=$(oci_r compute instance launch -c $T --availability-domain "$AD" --display-name addon-stremio \
         --shape VM.Standard.A1.Flex --shape-config "$1" --fault-domain "$2" \
         --image-id $IMG --subnet-id "$SUBNET" --assign-public-ip true --boot-volume-size-in-gbs 50 \
-        --metadata "{\"ssh_authorized_keys\":\"$SSH_KEY\"}" \
+        --metadata "{\"ssh_authorized_keys\":\"$SSH_KEY\"}" "${ud[@]}" \
         --query 'data.{id:id,estado:"lifecycle-state"}')
     if grep -q '"id"' <<<"$out"; then echo "$(date '+%F %T') CREADA ($1 $2): $out"; exit 0; fi
     echo "$(date '+%F %T') pedido ($1 $2): $(grep -m1 -o '"message": "[^"]*"' <<<"$out" || echo "$out" | tail -3)"

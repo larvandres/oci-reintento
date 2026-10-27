@@ -48,6 +48,10 @@ jobs:
       # "Sin lugar" no marca la corrida como fallida (GitHub mandaría un mail cada vez): solo avisa cuando se crea.
       - name: Intentar crear la VM
         id: crear
+        env:
+          SNIFF_DEPLOY_KEY: ${{ secrets.SNIFF_DEPLOY_KEY }}
+          DUCKDNS_DOMAIN: ${{ secrets.DUCKDNS_DOMAIN }}
+          DUCKDNS_TOKEN: ${{ secrets.DUCKDNS_TOKEN }}
         run: |
           timeout 88m ./crear-vm.sh 85 | tee salida.txt || true
           if grep -q -e CREADA -e 'Ya existe' salida.txt; then echo "ok=1" >> "$GITHUB_OUTPUT"; fi
@@ -56,9 +60,17 @@ jobs:
         if: steps.crear.outputs.ok == '1'
         env:
           GH_TOKEN: ${{ github.token }}
+          DUCKDNS_DOMAIN: ${{ secrets.DUCKDNS_DOMAIN }}
         run: |
           # Si la creó otra corrida (esta solo vio "Ya existe"), ese aviso ya está: no duplicar el issue
-          if grep -q CREADA salida.txt; then gh issue create --title "VM de Oracle creada" --body "$(cat salida.txt)"; fi
+          if grep -q CREADA salida.txt; then
+            { printf 'La VM ARM se creó. El cloud-init tarda ~2-4 min en construir y arrancar el addon.\n\n'
+              printf '**Instalar en Stremio:** `https://%s.duckdns.org/manifest.json`\n' "$DUCKDNS_DOMAIN"
+              printf '(si no responde, Caddy todavía está sacando el certificado TLS; reintentá en unos minutos)\n\n'
+              printf '```\n'; cat salida.txt; printf '\n```\n'
+            } > cuerpo.md
+            gh issue create --title "VM de Oracle creada" --body-file cuerpo.md
+          fi
           gh workflow disable reintento.yml
 
       # GitHub saltea muchos disparos del cron: al terminar sin lugar, la corrida lanza la siguiente
