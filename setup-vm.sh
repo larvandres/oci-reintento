@@ -32,17 +32,23 @@ rm -rf "$TMP"
 echo "== Puertos 80/443 en la VCN =="
 TMP_SL=$(mktemp)
 "$OCI" network security-list get --security-list-id "$SL" > "$TMP_SL"
-python3 - "$TMP_SL" <<'PY' > /tmp/ingress.json
+python3 - "$TMP_SL" <<'PY'
 import json,sys
 d=json.load(open(sys.argv[1]))['data']['ingress-security-rules']
 out=[]
 have=set()
+# kebab-case (lo que devuelve get) -> camelCase (lo que pide update), sin perder nada:
+# las reglas ICMP (tipo 3) y los rangos de origen se conservan tal cual
+def camel(x):
+    if isinstance(x, dict):
+        return {k.split('-')[0] + ''.join(w.title() for w in k.split('-')[1:]): camel(v)
+                for k, v in x.items() if v is not None}
+    return x
 for r in d:
-    nr={'protocol':r['protocol'],'source':r['source'],'isStateless':r.get('is-stateless',False)}
-    if r.get('tcp-options'):
-        pr=r['tcp-options']['destination-port-range']; nr['tcpOptions']={'destinationPortRange':pr}
-        have.add(pr.get('min'))
-    out.append(nr)
+    out.append(camel(r))
+    dr=(r.get('tcp-options') or {}).get('destination-port-range') or {}
+    if dr.get('min') == dr.get('max'):
+        have.add(dr.get('min'))
 for p in (80,443):
     if p not in have:
         out.append({'protocol':'6','source':'0.0.0.0/0','isStateless':False,
