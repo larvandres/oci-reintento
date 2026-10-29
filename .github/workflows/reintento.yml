@@ -15,10 +15,11 @@ concurrency:
 
 jobs:
   intentar:
-    runs-on: ubuntu-latest
+    # Fijo: ubuntu-latest pasa a Ubuntu 26 y un pip install roto cortaría la cadena sin aviso
+    runs-on: ubuntu-24.04
     timeout-minutes: 95
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Instalar la CLI de Oracle
         run: pip install --quiet oci-cli
