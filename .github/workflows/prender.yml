@@ -1,0 +1,45 @@
+name: Prender la VM el día 1
+# El vigilante de la VM (tope-gratis) la apaga si el tráfico del mes se acerca a los 10 TB gratis.
+# El día 1 arranca un mes nuevo con el contador en cero: si está apagada, se prende.
+on:
+  schedule:
+    - cron: "30 0 1 * *"
+  workflow_dispatch:
+
+jobs:
+  prender:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Instalar la CLI de Oracle
+        run: pip install --quiet oci-cli
+
+      - name: Configurar credenciales
+        env:
+          OCI_USER: ${{ secrets.OCI_USER }}
+          OCI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
+          OCI_KEY: ${{ secrets.OCI_KEY }}
+        run: |
+          mkdir -p ~/.oci
+          printf '%s\n' "$OCI_KEY" > ~/.oci/key.pem
+          chmod 600 ~/.oci/key.pem
+          cat > ~/.oci/config <<EOC
+          [DEFAULT]
+          user=$OCI_USER
+          fingerprint=$OCI_FINGERPRINT
+          tenancy=ocid1.tenancy.oc1..aaaaaaaahh4mc6kabj2nr5wm56lsa4b4ie2jh4qsmdiocawqiwvcqziqgwsq
+          region=sa-saopaulo-1
+          key_file=~/.oci/key.pem
+          EOC
+          chmod 600 ~/.oci/config
+
+      - name: Prender si está apagada
+        env:
+          SUPPRESS_LABEL_WARNING: "True"
+        run: |
+          T=ocid1.tenancy.oc1..aaaaaaaahh4mc6kabj2nr5wm56lsa4b4ie2jh4qsmdiocawqiwvcqziqgwsq
+          I=$(oci compute instance list -c $T --display-name addon-stremio --query 'data[?"lifecycle-state"!=`TERMINATED`].id | [0]' --raw-output)
+          [[ "$I" == ocid1.* ]] || { echo "No hay VM addon-stremio"; exit 1; }
+          s=$(oci compute instance get --instance-id "$I" --query 'data."lifecycle-state"' --raw-output)
+          echo "Estado: $s"
+          if [ "$s" = STOPPED ]; then oci compute instance action --instance-id "$I" --action START --wait-for-state RUNNING --query 'data."lifecycle-state"' --raw-output; fi
